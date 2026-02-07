@@ -87,6 +87,10 @@ const addAssetBtn = document.getElementById("add-asset");
 const refreshBtn = document.getElementById("refresh-prices");
 const priceStatusEl = document.getElementById("price-status");
 const assetDatalist = document.getElementById("asset-symbols");
+const introSection = document.getElementById("intro");
+const appSection = document.getElementById("app");
+const startBtn = document.getElementById("start-btn");
+const skipBtn = document.getElementById("skip-btn");
 
 function formatMoney(value) {
   return new Intl.NumberFormat("en-US", {
@@ -324,6 +328,11 @@ async function fetchPrices() {
   }
 }
 
+function enterApp() {
+  if (introSection) introSection.classList.remove("is-active");
+  if (appSection) appSection.classList.remove("is-hidden");
+}
+
 document.addEventListener("click", (event) => {
   const tabButton = event.target.closest(".tab");
   if (tabButton) {
@@ -383,8 +392,15 @@ if (refreshBtn) {
   });
 }
 
+if (startBtn) startBtn.addEventListener("click", enterApp);
+if (skipBtn) skipBtn.addEventListener("click", enterApp);
+
 setTab("portfolio");
 renderSuggestions();
 render();
 fetchPrices();
 setInterval(fetchPrices, 5 * 60 * 1000);
+
+if (appSection) {
+  appSection.classList.add("is-hidden");
+}
