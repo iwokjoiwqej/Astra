@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Astra</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="nebula"></div>
+    <div class="stars" aria-hidden="true"></div>
+
+    <datalist id="asset-symbols"></datalist>
+
+    <div class="page">
+      <header class="site-header">
+        <div class="brand">
+          <div class="brand-kicker">Astra</div>
+          <h1>Portfolio + Market Control Room</h1>
+        </div>
+        <div class="tabs" role="tablist">
+          <button class="tab is-active" data-tab="portfolio" role="tab" aria-selected="true">
+            Portfolio Tracker
+          </button>
+          <button class="tab" data-tab="analysis" role="tab" aria-selected="false">
+            Market Analysis
+          </button>
+        </div>
+      </header>
+
+      <main class="content">
+        <section id="portfolio-view" class="view is-active">
+          <div class="grid two-col">
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h2>Holdings</h2>
+                  <p class="muted">Add assets to calculate cumulative PnL and allocation.</p>
+                </div>
+                <div class="header-actions">
+                  <div class="muted" id="price-status">Prices: not loaded</div>
+                  <button class="btn-outline" id="refresh-prices">Refresh Prices</button>
+                  <button class="btn-outline" id="add-asset">+ Add Asset</button>
+                </div>
+              </div>
+
+              <div id="holdings-list" class="stack"></div>
+            </div>
+
+            <div class="stack">
+              <div class="card">
+                <h3>Portfolio Summary</h3>
+                <div class="summary-grid">
+                  <div class="summary-card">
+                    <span>Total Cost</span>
+                    <strong id="total-cost">$0.00</strong>
+                  </div>
+                  <div class="summary-card">
+                    <span>Total Value</span>
+                    <strong id="total-value">$0.00</strong>
+                  </div>
+                  <div class="summary-card">
+                    <span>Total PnL</span>
+                    <strong id="total-pnl">$0.00</strong>
+                  </div>
+                  <div class="summary-card">
+                    <span>PnL %</span>
+                    <strong id="total-pnl-pct">0.00%</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-header">
+                  <h3>Asset Proportion</h3>
+                  <span class="muted">Based on current value</span>
+                </div>
+                <div id="allocation-list" class="stack"></div>
+              </div>
+
+              <div class="card scanline">
+                <h3>PnL Per Asset</h3>
+                <div id="pnl-list" class="stack"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="analysis-view" class="view">
+          <div class="grid two-col-wide">
+            <div class="card">
+              <h2>Macro Dashboard</h2>
+              <p class="muted">Static preview cards. Plug in live data feeds later.</p>
+              <div id="market-cards" class="card-grid"></div>
+            </div>
+
+            <div class="stack">
+              <div class="card">
+                <h3>Astra Signal Matrix</h3>
+                <p class="muted">Composite read of sector flows and volatility.</p>
+                <div id="sector-list" class="stack"></div>
+              </div>
+
+              <div class="card">
+                <h3>Indices & Charts</h3>
+                <div id="chart-list" class="stack"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
