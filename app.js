@@ -69,6 +69,13 @@ const assetSuggestions = [
   "NZDUSD",
 ];
 
+function makeId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `id_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 const holdingsList = document.getElementById("holdings-list");
 const allocationList = document.getElementById("allocation-list");
 const pnlList = document.getElementById("pnl-list");
@@ -291,6 +298,9 @@ async function fetchPrices() {
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
+      if (res.status === 404) {
+        throw new Error("Netlify functions not available");
+      }
       throw new Error(`Price API error (${res.status})`);
     }
     const data = await res.json();
@@ -306,7 +316,11 @@ async function fetchPrices() {
     setPriceStatus(`Prices: updated ${state.lastUpdated.toLocaleTimeString()}`);
     render();
   } catch (err) {
-    setPriceStatus("Prices: failed to load (Netlify Functions needed)");
+    if (String(err.message || "").includes("Netlify functions")) {
+      setPriceStatus("Prices: unavailable on Live Server (deploy to Netlify)");
+    } else {
+      setPriceStatus("Prices: failed to load");
+    }
   }
 }
 
@@ -349,21 +363,25 @@ document.addEventListener("input", (event) => {
   renderPnlList();
 });
 
-addAssetBtn.addEventListener("click", () => {
-  state.holdings.push({
-    id: crypto.randomUUID(),
-    symbol: "",
-    type: "Other",
-    entry: 0,
-    current: 0,
-    qty: 0,
+if (addAssetBtn) {
+  addAssetBtn.addEventListener("click", () => {
+    state.holdings.push({
+      id: makeId(),
+      symbol: "",
+      type: "Other",
+      entry: 0,
+      current: 0,
+      qty: 0,
+    });
+    render();
   });
-  render();
-});
+}
 
-refreshBtn.addEventListener("click", () => {
-  fetchPrices();
-});
+if (refreshBtn) {
+  refreshBtn.addEventListener("click", () => {
+    fetchPrices();
+  });
+}
 
 setTab("portfolio");
 renderSuggestions();
