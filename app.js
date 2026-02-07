@@ -2,11 +2,13 @@ const state = {
   tab: "portfolio",
   lastUpdated: null,
   priceErrors: {},
+  priceDisabled: false,
+  lastFetchAt: 0,
   holdings: [
-    { id: "1", symbol: "BTC", type: "Crypto", entry: 42000, current: 46500, qty: 0.35 },
-    { id: "2", symbol: "AAPL", type: "Stock", entry: 168, current: 185, qty: 18 },
-    { id: "3", symbol: "XAU", type: "Metal", entry: 1995, current: 2038, qty: 1.4 },
-    { id: "4", symbol: "ETH", type: "Crypto", entry: 2200, current: 2450, qty: 2.1 },
+    { id: "1", name: "Bitcoin", symbol: "BTC", type: "Crypto", entry: 42000, current: 46500, qty: 0.35 },
+    { id: "2", name: "Apple", symbol: "AAPL", type: "Stock", entry: 168, current: 185, qty: 18 },
+    { id: "3", name: "Gold", symbol: "XAU", type: "Metal", entry: 1995, current: 2038, qty: 1.4 },
+    { id: "4", name: "Ethereum", symbol: "ETH", type: "Crypto", entry: 2200, current: 2450, qty: 2.1 },
   ],
 };
 
@@ -91,6 +93,24 @@ const introSection = document.getElementById("intro");
 const appSection = document.getElementById("app");
 const startBtn = document.getElementById("start-btn");
 const skipBtn = document.getElementById("skip-btn");
+const assetModal = document.getElementById("asset-modal");
+const assetNameInput = document.getElementById("asset-name");
+const assetSymbolInput = document.getElementById("asset-symbol");
+const assetTypeInput = document.getElementById("asset-type");
+const assetEntryInput = document.getElementById("asset-entry");
+const assetQtyInput = document.getElementById("asset-qty");
+const assetSaveBtn = document.getElementById("asset-save");
+const assetCancelBtn = document.getElementById("asset-cancel");
+const assetCloseBtn = document.getElementById("asset-close");
+const filterTextInput = document.getElementById("filter-text");
+const filterSortInput = document.getElementById("filter-sort");
+const marketStatusEl = document.getElementById("market-status");
+const chartSpyEl = document.getElementById("chart-spy");
+const chartBtcEl = document.getElementById("chart-btc");
+
+let chartsInitialized = false;
+let spySeries = null;
+let btcSeries = null;
 
 function formatMoney(value) {
   return new Intl.NumberFormat("en-US", {
@@ -117,6 +137,30 @@ function calcAllocations() {
   }));
 }
 
+function getFilteredHoldings() {
+  const query = (filterTextInput?.value || "").trim().toLowerCase();
+  const sort = filterSortInput?.value || "name";
+
+  let list = [...state.holdings];
+  if (query) {
+    list = list.filter((h) => {
+      const name = (h.name || "").toLowerCase();
+      const symbol = (h.symbol || "").toLowerCase();
+      return name.includes(query) || symbol.includes(query);
+    });
+  }
+
+  if (sort === "pnl") {
+    list.sort((a, b) => (b.current - b.entry) * b.qty - (a.current - a.entry) * a.qty);
+  } else if (sort === "value") {
+    list.sort((a, b) => b.current * b.qty - a.current * a.qty);
+  } else {
+    list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  }
+
+  return list;
+}
+
 function setTab(nextTab) {
   state.tab = nextTab;
   document.querySelectorAll(".tab").forEach((btn) => {
@@ -129,7 +173,8 @@ function setTab(nextTab) {
 }
 
 function renderHoldings() {
-  holdingsList.innerHTML = state.holdings
+  const list = getFilteredHoldings();
+  holdingsList.innerHTML = list
     .map((h) => {
       const pnl = (h.current - h.entry) * h.qty;
       const pnlPct = h.entry === 0 ? 0 : ((h.current - h.entry) / h.entry) * 100;
@@ -141,16 +186,16 @@ function renderHoldings() {
         <div class="holding" data-id="${h.id}">
           <div class="holding-grid">
             <div>
-              <label>Symbol</label>
-              <input type="text" value="${h.symbol}" data-field="symbol" placeholder="BTC" list="asset-symbols" />
+              <label>Asset</label>
+              <div class="current-display">
+                <span>${h.name || "Untitled"} · ${h.symbol}</span>
+              </div>
             </div>
             <div>
               <label>Type</label>
-              <select data-field="type">
-                ${["Crypto", "Stock", "Metal", "Forex", "Other"]
-                  .map((t) => `<option value="${t}" ${h.type === t ? "selected" : ""}>${t}</option>`)
-                  .join("")}
-              </select>
+              <div class="current-display">
+                <span>${h.type || "Other"}</span>
+              </div>
             </div>
             <div>
               <label>Entry</label>
@@ -253,17 +298,7 @@ function renderMarkets() {
     )
     .join("");
 
-  const chartEl = document.getElementById("chart-list");
-  chartEl.innerHTML = chartTitles
-    .map(
-      (title) => `
-      <div class="chart-card">
-        <div>${title}</div>
-        <div class="chart-placeholder"></div>
-      </div>
-    `
-    )
-    .join("");
+  // Chart placeholders are now real charts.
 }
 
 function render() {
@@ -282,7 +317,64 @@ function setPriceStatus(text) {
   priceStatusEl.textContent = text;
 }
 
+function setMarketStatus(text) {
+  if (marketStatusEl) marketStatusEl.textContent = text;
+}
+
+function initCharts() {
+  if (chartsInitialized) return;
+  if (!window.LightweightCharts || !chartSpyEl || !chartBtcEl) return;
+
+  const chartOptions = {
+    layout: {
+      background: { color: "transparent" },
+      textColor: "#f3efe3",
+    },
+    grid: {
+      vertLines: { color: "rgba(180, 150, 60, 0.08)" },
+      horzLines: { color: "rgba(180, 150, 60, 0.08)" },
+    },
+    rightPriceScale: { borderColor: "rgba(180, 150, 60, 0.2)" },
+    timeScale: { borderColor: "rgba(180, 150, 60, 0.2)" },
+  };
+
+  const spyChart = window.LightweightCharts.createChart(chartSpyEl, chartOptions);
+  spySeries = spyChart.addLineSeries({ color: "#c7a342", lineWidth: 2 });
+
+  const btcChart = window.LightweightCharts.createChart(chartBtcEl, chartOptions);
+  btcSeries = btcChart.addLineSeries({ color: "#e6cd77", lineWidth: 2 });
+
+  chartsInitialized = true;
+}
+
+async function fetchMarketCharts() {
+  if (!chartsInitialized) initCharts();
+  if (!spySeries || !btcSeries) return;
+
+  setMarketStatus("Market data: loading...");
+  try {
+    const res = await fetch("/.netlify/functions/market");
+    if (!res.ok) throw new Error(`Market API error (${res.status})`);
+    const data = await res.json();
+
+    if (Array.isArray(data.spy)) {
+      spySeries.setData(data.spy);
+    }
+    if (Array.isArray(data.btc)) {
+      btcSeries.setData(data.btc);
+    }
+    setMarketStatus("Market data: updated");
+  } catch (err) {
+    setMarketStatus("Market data: unavailable (deploy to Netlify)");
+  }
+}
+
 async function fetchPrices() {
+  if (state.priceDisabled) return;
+  const now = Date.now();
+  if (now - state.lastFetchAt < 60 * 1000) return;
+  state.lastFetchAt = now;
+
   const payload = {
     holdings: state.holdings
       .filter((h) => h.symbol.trim())
@@ -317,11 +409,17 @@ async function fetchPrices() {
       return Number.isFinite(price) ? { ...h, current: price } : h;
     });
     state.lastUpdated = data.updatedAt ? new Date(data.updatedAt) : new Date();
-    setPriceStatus(`Prices: updated ${state.lastUpdated.toLocaleTimeString()}`);
+    const errorCount = Object.keys(state.priceErrors).length;
+    if (errorCount > 0) {
+      setPriceStatus(`Prices: partial (${errorCount} issue${errorCount > 1 ? "s" : ""})`);
+    } else {
+      setPriceStatus(`Prices: updated ${state.lastUpdated.toLocaleTimeString()}`);
+    }
     render();
   } catch (err) {
     if (String(err.message || "").includes("Netlify functions")) {
       setPriceStatus("Prices: unavailable on Live Server (deploy to Netlify)");
+      state.priceDisabled = true;
     } else {
       setPriceStatus("Prices: failed to load");
     }
@@ -331,6 +429,25 @@ async function fetchPrices() {
 function enterApp() {
   if (introSection) introSection.classList.remove("is-active");
   if (appSection) appSection.classList.remove("is-hidden");
+  fetchMarketCharts();
+}
+
+function openAssetModal() {
+  if (!assetModal) return;
+  assetModal.classList.add("is-open");
+  assetModal.setAttribute("aria-hidden", "false");
+  if (assetNameInput) assetNameInput.value = "";
+  if (assetSymbolInput) assetSymbolInput.value = "";
+  if (assetEntryInput) assetEntryInput.value = "";
+  if (assetQtyInput) assetQtyInput.value = "";
+  if (assetTypeInput) assetTypeInput.value = "Crypto";
+  if (assetNameInput) assetNameInput.focus();
+}
+
+function closeAssetModal() {
+  if (!assetModal) return;
+  assetModal.classList.remove("is-open");
+  assetModal.setAttribute("aria-hidden", "true");
 }
 
 document.addEventListener("click", (event) => {
@@ -340,17 +457,31 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const addBtn = event.target.closest("#add-asset");
+  if (addBtn) {
+    openAssetModal();
+    return;
+  }
+
   const removeBtn = event.target.closest("[data-action='remove']");
   if (removeBtn) {
     const row = removeBtn.closest("[data-id]");
     state.holdings = state.holdings.filter((h) => h.id !== row.dataset.id);
     render();
   }
+
+  if (event.target.closest("[data-modal-close='true']")) {
+    closeAssetModal();
+  }
 });
 
 document.addEventListener("input", (event) => {
   const input = event.target;
   if (!(input instanceof HTMLInputElement || input instanceof HTMLSelectElement)) return;
+  if (input.id === "filter-text" || input.id === "filter-sort") {
+    render();
+    return;
+  }
   const row = input.closest("[data-id]");
   if (!row) return;
   const id = row.dataset.id;
@@ -359,11 +490,7 @@ document.addEventListener("input", (event) => {
   const holding = state.holdings.find((h) => h.id === id);
   if (!holding) return;
 
-  if (field === "symbol") {
-    holding.symbol = input.value.toUpperCase();
-  } else if (field === "type") {
-    holding.type = input.value;
-  } else if (field === "entry" || field === "qty") {
+  if (field === "entry" || field === "qty") {
     holding[field] = Number(input.value);
   }
 
@@ -373,17 +500,7 @@ document.addEventListener("input", (event) => {
 });
 
 if (addAssetBtn) {
-  addAssetBtn.addEventListener("click", () => {
-    state.holdings.push({
-      id: makeId(),
-      symbol: "",
-      type: "Other",
-      entry: 0,
-      current: 0,
-      qty: 0,
-    });
-    render();
-  });
+  addAssetBtn.addEventListener("click", openAssetModal);
 }
 
 if (refreshBtn) {
@@ -395,11 +512,39 @@ if (refreshBtn) {
 if (startBtn) startBtn.addEventListener("click", enterApp);
 if (skipBtn) skipBtn.addEventListener("click", enterApp);
 
+if (assetCancelBtn) assetCancelBtn.addEventListener("click", closeAssetModal);
+if (assetCloseBtn) assetCloseBtn.addEventListener("click", closeAssetModal);
+
+if (assetSaveBtn) {
+  assetSaveBtn.addEventListener("click", () => {
+    const name = (assetNameInput?.value || "").trim();
+    const symbol = (assetSymbolInput?.value || "").trim().toUpperCase();
+    const type = assetTypeInput?.value || "Other";
+    const entry = Number(assetEntryInput?.value || 0);
+    const qty = Number(assetQtyInput?.value || 0);
+    if (!symbol) return;
+
+    state.holdings.push({
+      id: makeId(),
+      name: name || symbol,
+      symbol,
+      type,
+      entry,
+      current: 0,
+      qty,
+    });
+    closeAssetModal();
+    render();
+    fetchPrices();
+  });
+}
+
 setTab("portfolio");
 renderSuggestions();
 render();
 fetchPrices();
 setInterval(fetchPrices, 5 * 60 * 1000);
+setInterval(fetchMarketCharts, 5 * 60 * 1000);
 
 if (appSection) {
   appSection.classList.add("is-hidden");
