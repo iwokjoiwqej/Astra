@@ -4,6 +4,7 @@ const state = {
   priceErrors: {},
   priceDisabled: false,
   lastFetchAt: 0,
+  lastKnownPrices: {},
   holdings: [
     { id: "1", name: "Bitcoin", symbol: "BTC", type: "Crypto", entry: 42000, current: 46500, qty: 0.35 },
     { id: "2", name: "Apple", symbol: "AAPL", type: "Stock", entry: 168, current: 185, qty: 18 },
@@ -317,6 +318,29 @@ function setPriceStatus(text) {
   priceStatusEl.textContent = text;
 }
 
+function loadCachedPrices() {
+  try {
+    const cached = JSON.parse(localStorage.getItem("astra_prices") || "{}");
+    if (cached && typeof cached === "object") {
+      state.lastKnownPrices = cached;
+      state.holdings = state.holdings.map((h) => {
+        const symbol = h.symbol.trim().toUpperCase();
+        const price = cached[symbol];
+        return Number.isFinite(price) ? { ...h, current: price } : h;
+      });
+    }
+  } catch {
+    state.lastKnownPrices = {};
+  }
+}
+
+function saveCachedPrices() {
+  try {
+    localStorage.setItem("astra_prices", JSON.stringify(state.lastKnownPrices));
+  } catch {
+    // ignore storage errors
+  }
+}
 function setMarketStatus(text) {
   if (marketStatusEl) marketStatusEl.textContent = text;
 }
@@ -406,12 +430,18 @@ async function fetchPrices() {
     state.holdings = state.holdings.map((h) => {
       const symbol = h.symbol.trim().toUpperCase();
       const price = prices[symbol]?.price;
-      return Number.isFinite(price) ? { ...h, current: price } : h;
+      if (Number.isFinite(price)) {
+        state.lastKnownPrices[symbol] = price;
+        return { ...h, current: price };
+      }
+      const fallback = state.lastKnownPrices[symbol];
+      return Number.isFinite(fallback) ? { ...h, current: fallback } : h;
     });
+    saveCachedPrices();
     state.lastUpdated = data.updatedAt ? new Date(data.updatedAt) : new Date();
     const errorCount = Object.keys(state.priceErrors).length;
     if (errorCount > 0) {
-      setPriceStatus(`Prices: partial (${errorCount} issue${errorCount > 1 ? "s" : ""})`);
+      setPriceStatus("Prices: updated (fallback used)");
     } else {
       setPriceStatus(`Prices: updated ${state.lastUpdated.toLocaleTimeString()}`);
     }
@@ -421,8 +451,14 @@ async function fetchPrices() {
       setPriceStatus("Prices: unavailable on Live Server (deploy to Netlify)");
       state.priceDisabled = true;
     } else {
-      setPriceStatus("Prices: failed to load");
+      setPriceStatus("Prices: failed to load (using last known)");
     }
+    state.holdings = state.holdings.map((h) => {
+      const symbol = h.symbol.trim().toUpperCase();
+      const fallback = state.lastKnownPrices[symbol];
+      return Number.isFinite(fallback) ? { ...h, current: fallback } : h;
+    });
+    render();
   }
 }
 
@@ -541,6 +577,7 @@ if (assetSaveBtn) {
 
 setTab("portfolio");
 renderSuggestions();
+loadCachedPrices();
 render();
 fetchPrices();
 setInterval(fetchPrices, 5 * 60 * 1000);
