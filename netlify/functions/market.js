@@ -1,5 +1,6 @@
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const cache = new Map();
+let lastGoodPayload = null;
 
 function getCache(key) {
   const entry = cache.get(key);
@@ -33,6 +34,9 @@ async function fetchSpySeries() {
   const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=SPY&outputsize=compact&apikey=${apiKey}`;
   const res = await fetch(url);
   const data = await res.json();
+  if (data.Note) {
+    throw new Error("Alpha Vantage rate limit");
+  }
   const series = data["Time Series (Daily)"] || {};
   const points = Object.entries(series)
     .map(([date, ohlc]) => ({
@@ -72,8 +76,12 @@ async function fetchBtcSeries() {
 export async function handler() {
   try {
     const [spy, btc] = await Promise.all([fetchSpySeries(), fetchBtcSeries()]);
-    return json(200, { spy, btc });
+    lastGoodPayload = { spy, btc, stale: false, updatedAt: new Date().toISOString() };
+    return json(200, lastGoodPayload);
   } catch (err) {
-    return json(500, { error: "Market data unavailable" });
+    if (lastGoodPayload) {
+      return json(200, { ...lastGoodPayload, stale: true, error: "Using cached data" });
+    }
+    return json(200, { spy: [], btc: [], stale: true, error: "Market data unavailable" });
   }
 }

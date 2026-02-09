@@ -378,7 +378,6 @@ async function fetchMarketCharts() {
   setMarketStatus("Market data: loading...");
   try {
     const res = await fetch("/.netlify/functions/market");
-    if (!res.ok) throw new Error(`Market API error (${res.status})`);
     const data = await res.json();
 
     if (Array.isArray(data.spy)) {
@@ -387,9 +386,13 @@ async function fetchMarketCharts() {
     if (Array.isArray(data.btc)) {
       btcSeries.setData(data.btc);
     }
-    setMarketStatus("Market data: updated");
+    if (data.stale) {
+      setMarketStatus("Market data: stale (cached)");
+    } else {
+      setMarketStatus("Market data: updated");
+    }
   } catch (err) {
-    setMarketStatus("Market data: unavailable (deploy to Netlify)");
+    setMarketStatus("Market data: unavailable (using cached)");
   }
 }
 
@@ -580,7 +583,7 @@ renderSuggestions();
 loadCachedPrices();
 render();
 fetchPrices();
-setInterval(fetchPrices, 5 * 60 * 1000);
+setInterval(fetchPrices, 60 * 1000);
 setInterval(fetchMarketCharts, 5 * 60 * 1000);
 
 if (appSection) {
