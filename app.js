@@ -1,10 +1,12 @@
-const state = {
+﻿﻿const state = {
   tab: "portfolio",
   lastUpdated: null,
   priceErrors: {},
   priceDisabled: false,
   lastFetchAt: 0,
   lastKnownPrices: {},
+  priceHistory: {},
+  expanded: {},
   holdings: [
     { id: "1", name: "Bitcoin", symbol: "BTC", type: "Crypto", entry: 42000, current: 46500, qty: 0.35 },
     { id: "2", name: "Apple", symbol: "AAPL", type: "Stock", entry: 168, current: 185, qty: 18 },
@@ -183,41 +185,62 @@ function renderHoldings() {
       const symbolKey = h.symbol.trim().toUpperCase();
       const error = state.priceErrors[symbolKey] || "";
       const currentLabel = Number.isFinite(h.current) && h.current > 0 ? formatMoney(h.current) : "—";
+      const expanded = !!state.expanded[h.id];
+      const history = state.priceHistory[symbolKey] || [];
+      const sparkline = sparklineSvg(history);
       return `
-        <div class="holding" data-id="${h.id}">
-          <div class="holding-grid">
-            <div>
-              <label>Asset</label>
-              <div class="current-display">
-                <span>${h.name || "Untitled"} · ${h.symbol}</span>
-              </div>
+        <div class="holding holding-compact" data-id="${h.id}">
+          <div class="holding-summary">
+            <div class="summary-main">
+              <div class="asset-name">${h.name || "Untitled"}</div>
             </div>
-            <div>
-              <label>Type</label>
-              <div class="current-display">
-                <span>${h.type || "Other"}</span>
-              </div>
+            <div class="summary-qty">Qty: ${h.qty}</div>
+            <div class="summary-pnl ${pnlClass}">
+              ${formatMoney(pnl)} (${pnlPct.toFixed(2)}%)
             </div>
-            <div>
-              <label>Entry</label>
-              <input type="number" value="${h.entry}" data-field="entry" />
-            </div>
-            <div>
-              <label>Current</label>
-              <div class="current-display">
-                <span>${currentLabel}</span>
-                ${error ? `<small>${error}</small>` : ""}
-              </div>
-            </div>
-            <div>
-              <label>Qty</label>
-              <input type="number" value="${h.qty}" data-field="qty" />
-            </div>
+            <button class="pill" data-action="toggle">${expanded ? "Hide" : "Details"}</button>
             <button class="pill" data-action="remove">Remove</button>
           </div>
-          <div class="holding-footer">
-            <div>Value: ${formatMoney(h.current * h.qty)}</div>
-            <div class="${pnlClass}">PnL: ${formatMoney(pnl)} (${pnlPct.toFixed(2)}%)</div>
+
+          <div class="holding-details ${expanded ? "is-open" : ""}">
+            <div class="detail-grid">
+              <div>
+                <label>Symbol</label>
+                <div class="current-display">
+                  <span>${h.symbol}</span>
+                </div>
+              </div>
+              <div>
+                <label>Type</label>
+                <div class="current-display">
+                  <span>${h.type || "Other"}</span>
+                </div>
+              </div>
+              <div>
+                <label>Entry</label>
+                <input type="number" value="${h.entry}" data-field="entry" />
+              </div>
+              <div>
+                <label>Current</label>
+                <div class="current-display">
+                  <span>${currentLabel}</span>
+                  ${error ? `<small>${error}</small>` : ""}
+                </div>
+              </div>
+              <div>
+                <label>Qty</label>
+                <input type="number" value="${h.qty}" data-field="qty" />
+              </div>
+              <div>
+                <label>Value</label>
+                <div class="current-display">
+                  <span>${formatMoney(h.current * h.qty)}</span>
+                </div>
+              </div>
+            </div>
+            <div class="sparkline">
+              ${sparkline || "<div class=\"sparkline-empty\">Chart will appear after updates.</div>"}
+            </div>
           </div>
         </div>
       `;
@@ -318,6 +341,25 @@ function setPriceStatus(text) {
   priceStatusEl.textContent = text;
 }
 
+function loadPriceHistory() {
+  try {
+    const cached = JSON.parse(localStorage.getItem("astra_price_history") || "{}");
+    if (cached && typeof cached === "object") {
+      state.priceHistory = cached;
+    }
+  } catch {
+    state.priceHistory = {};
+  }
+}
+
+function savePriceHistory() {
+  try {
+    localStorage.setItem("astra_price_history", JSON.stringify(state.priceHistory));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 function loadCachedPrices() {
   try {
     const cached = JSON.parse(localStorage.getItem("astra_prices") || "{}");
@@ -340,6 +382,40 @@ function saveCachedPrices() {
   } catch {
     // ignore storage errors
   }
+}
+
+function updatePriceHistory(symbol, price) {
+  const key = symbol.toUpperCase();
+  if (!Number.isFinite(price)) return;
+  if (!state.priceHistory[key]) state.priceHistory[key] = [];
+  const now = Math.floor(Date.now() / 1000);
+  state.priceHistory[key].push({ time: now, value: price });
+  if (state.priceHistory[key].length > 120) {
+    state.priceHistory[key] = state.priceHistory[key].slice(-120);
+  }
+}
+
+function sparklineSvg(points) {
+  if (!points || points.length < 2) return "";
+  const values = points.map((p) => p.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const w = 260;
+  const h = 80;
+  const step = w / (points.length - 1);
+  const path = points
+    .map((p, i) => {
+      const x = Math.round(i * step);
+      const y = Math.round(h - ((p.value - min) / range) * h);
+      return `${i === 0 ? "M" : "L"}${x},${y}`;
+    })
+    .join(" ");
+  return `
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      <path d="${path}" />
+    </svg>
+  `;
 }
 function setMarketStatus(text) {
   if (marketStatusEl) marketStatusEl.textContent = text;
@@ -435,12 +511,14 @@ async function fetchPrices() {
       const price = prices[symbol]?.price;
       if (Number.isFinite(price)) {
         state.lastKnownPrices[symbol] = price;
+        updatePriceHistory(symbol, price);
         return { ...h, current: price };
       }
       const fallback = state.lastKnownPrices[symbol];
       return Number.isFinite(fallback) ? { ...h, current: fallback } : h;
     });
     saveCachedPrices();
+    savePriceHistory();
     state.lastUpdated = data.updatedAt ? new Date(data.updatedAt) : new Date();
     const errorCount = Object.keys(state.priceErrors).length;
     if (errorCount > 0) {
@@ -499,6 +577,17 @@ document.addEventListener("click", (event) => {
   const addBtn = event.target.closest("#add-asset");
   if (addBtn) {
     openAssetModal();
+    return;
+  }
+
+  const toggleBtn = event.target.closest("[data-action='toggle']");
+  if (toggleBtn) {
+    const row = toggleBtn.closest("[data-id]");
+    if (row) {
+      const id = row.dataset.id;
+      state.expanded[id] = !state.expanded[id];
+      render();
+    }
     return;
   }
 
@@ -581,6 +670,7 @@ if (assetSaveBtn) {
 setTab("portfolio");
 renderSuggestions();
 loadCachedPrices();
+loadPriceHistory();
 render();
 fetchPrices();
 setInterval(fetchPrices, 60 * 1000);
@@ -589,3 +679,4 @@ setInterval(fetchMarketCharts, 5 * 60 * 1000);
 if (appSection) {
   appSection.classList.add("is-hidden");
 }
+
